@@ -250,52 +250,85 @@ class SerpControllerEnv(Node, Env):
         return info['end_state'] == 'finished'
 
     def run_rl_alg(self):
-
+        # Set seeds
+        import random
+        import numpy as np
+        seed = 42
+        random.seed(seed)
+        np.random.seed(seed)
+        
         check_env(self)
         self.wait_lidar_reading()
 
-        # Create the agent
-        agent = PPO("MlpPolicy", self, verbose=1)
+        # Create the agent with deterministic settings
+        agent = PPO(
+            "MlpPolicy", 
+            self, 
+            verbose=1, 
+            seed=seed,
+            n_steps=2048,  # Fixed number of steps before update
+            batch_size=64,  # Fixed batch size
+            n_epochs=10,   # Fixed number of epochs
+            learning_rate=3e-4,  # Fixed learning rate
+            gamma=0.99,    # Fixed discount factor
+        )
 
-        # Target accuracy
-        min_accuracy = 0.8
-        # Current accuracy
-        accuracy = 0
-        # Number of tested episodes in each iteration
-        n_test_episodes = 20
+        # Fixed training parameters
+        total_episodes = 1000  # Total number of episodes to train
+        eval_frequency = 100   # Evaluate every N episodes
+        eval_episodes = 20     # Number of episodes for evaluation
+        target_accuracy = 0.8  # Still use this as success metric
 
-        training_iterations = 0
-
-        while accuracy < min_accuracy:
-            training_steps= 5000
-            self.get_logger().info('Starting training for ' + str(training_steps) + ' steps')
-
+        episode_count = 0
+        best_accuracy = 0
+        
+        self.get_logger().info(f'Starting training for {total_episodes} episodes')
+        
+        while episode_count < total_episodes:
+            # Train for a fixed number of episodes
+            episodes_to_train = min(eval_frequency, total_episodes - episode_count)
+            
+            self.get_logger().info(f'Training episodes {episode_count} to {episode_count + episodes_to_train}')
+            
+            # Reset counters before training
             self.training = True
             self.reset_counters()
-
-            # Train the agent
-            agent.learn(total_timesteps=training_steps)
-
-            self.training = False
-
-            successful_episodes = 0
-
-            # Test the agent
-            for i in range(n_test_episodes):
-                self.get_logger().info('Testing episode number ' + str(i + 1) + '.')
-                if self.run_episode(agent): successful_episodes += 1
             
-            # Calculate the accuracy
-            accuracy = successful_episodes/n_test_episodes
-
-            self.get_logger().info('Testing finished. Accuracy: ' + str(accuracy))
-
-            training_iterations += 1
-
-        self.get_logger().info('Training Finished. Training iterations: ' + str(training_iterations) + '  Accuracy: ' + str(accuracy))
-
-
-        agent.save("src/ros2_flatland_rl_tutorial/ppo")
+            # Calculate steps needed (approximate)
+            steps_per_episode = 50  # Estimate average steps per episode
+            training_steps = episodes_to_train * steps_per_episode
+            
+            # Train
+            agent.learn(total_timesteps=training_steps, reset_num_timesteps=False)
+            
+            episode_count += episodes_to_train
+            self.training = False
+            
+            # Evaluate
+            self.get_logger().info(f'Evaluating after {episode_count} episodes...')
+            successful_episodes = 0
+            
+            for i in range(eval_episodes):
+                if self.run_episode(agent): 
+                    successful_episodes += 1
+            
+            accuracy = successful_episodes / eval_episodes
+            self.get_logger().info(f'Episodes: {episode_count}/{total_episodes}, Accuracy: {accuracy:.2%}')
+            
+            # Save best model
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                agent.save("src/ros2_flatland_rl_tutorial/ppo_best")
+                self.get_logger().info(f'New best accuracy: {best_accuracy:.2%}')
+            
+            # Early stopping if target reached
+            if accuracy >= target_accuracy:
+                self.get_logger().info(f'Target accuracy reached! Training complete.')
+                break
+        
+        # Final save
+        agent.save("src/ros2_flatland_rl_tutorial/ppo_final")
+        self.get_logger().info(f'Training finished. Total episodes: {episode_count}, Best accuracy: {best_accuracy:.2%}')
 
 def main(args = None):
     rclpy.init()
