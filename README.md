@@ -2,23 +2,20 @@
 
 ## First Run
 
-### Pre-requisites
+### VM
 
-All the prerequisites are carried over from the previous tutorial. In addition, you also need to install the Stable-Baselines3 package. Follow the [installation guide](https://stable-baselines3.readthedocs.io/en/master/guide/install.html) from the documentation. For this example, you can install the most basic version either for [Windows](https://stable-baselines3.readthedocs.io/en/master/guide/install.html#windows-10) or using [pip](https://stable-baselines3.readthedocs.io/en/master/guide/install.html#stable-release) for other OS's.
-
-The Stable-Baselines3 installation should automatically install all missing dependencies, including the Gym package. Nevertheless, pay attention during the installation and make sure there were no errors. If any dependency fails to install try to do it manually.
-
-If you are using the [VM provided](https://drive.google.com/file/d/1Wte7yGi9puJU5gR8mpzAtvtKOPtoYKEJ/view?usp=sharing), the package is ready to run.
+Using a Virtual Machine engine such as VirtualBox or VMware, you can use the provided [VM provided](https://drive.google.com/file/d/1Wte7yGi9puJU5gR8mpzAtvtKOPtoYKEJ/view?usp=sharing). This VM has all the necessary packages already installed and configured, including a fresh install of ROS 2 Humble on Ubuntu, and the Stable-Baselines3 Python package.
 
 ### Running the code
 
-Clone the repository to your `<ros2_workspace>/src` folder:
+Clone this repository to the `~/ros2_ws/src` folder:
 ```
-git clone https://github.com/FilipeAlmeidaFEUP/ros2_flatland_rl_tutorial.git
+git clone https://github.com/MekhyW/ros2_flatland_rl.git
 ```
 
 Build the project and install dependencies:
 ```
+cd ..
 rosdep install -i --from-path src --rosdistro humble -y
 colcon build
 source install/setup.bash
