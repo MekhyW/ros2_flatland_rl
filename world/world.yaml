@@ -1,7 +1,7 @@
 properties: {}
 layers:
   - name: ["collisions_layer", "serp_laser_layer"]
-    map: "turn.yaml" # <------- Chage the name here
+    map: "room_map.yaml"  # Changed from "turn.yaml"
     color: [1.0, 1.0, 1.0, 1]
   - name: ["end_laser_layer", "end_beacon_layer"]
     map: "empty.yaml"
@@ -9,7 +9,7 @@ layers:
 models:
   - name: serp
     model: "serp.model.yaml"
-    pose: [0.0, 0.0, 1.57079632679] # Starting position
+    pose: [-10.0, -6.0, 0.0]  # Starting position
   - name: end_beacon
     model: "end_beacon.model.yaml"
-    pose: [1.6, 1.6, 0.0] # Target position
+    pose: [10.0, -1.0, 0.0]  # Target position 

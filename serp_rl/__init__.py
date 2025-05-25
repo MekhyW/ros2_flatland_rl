@@ -44,7 +44,8 @@ class SerpControllerEnv(Node, Env):
         self.collision = False
 
         # Possible starting positions
-        self.start_positions = [(0.0, 0.0, 1.57079632679), (1.6, 1.6, 3.14159265359)]
+        # Updated positions for room_map (multi-room environment)
+        self.start_positions = [(-8.0, -4.0, 0.0), (8.0, 4.0, 3.14159265359)]
         # Current position
         self.position = 0
 
@@ -78,7 +79,7 @@ class SerpControllerEnv(Node, Env):
         # action is an integer between 0 and 2 (total of 3 actions)
         self.action_space = Discrete(len(self.actions))
         # state is represented by a numpy.Array with size 9 and values between 0 and 2
-        self.observation_space = Box(0, 2, shape=(self.n_lidar_sections,), dtype=np.float64)
+        self.observation_space = Box(0, 1, shape=(self.n_lidar_sections,), dtype=np.float64)
 
         # ****************************************
 
@@ -188,6 +189,7 @@ class SerpControllerEnv(Node, Env):
 
     # Send a request to move a model
     def move_model(self, model_name, x, y, theta):
+        self.get_logger().info(f'Moving {model_name} to x={x}, y={y}, theta={theta}')
         client = self.create_client(MoveModel, "/move_model")
         client.wait_for_service()
         request = MoveModel.Request()
@@ -202,13 +204,20 @@ class SerpControllerEnv(Node, Env):
     # Divite into sections and sample the lowest value from each
     def processLiDAR(self, data):
         self.lidar_sample = []
-
+        max_range = 10.0  # Maximum LiDAR range
+        
         rays = data.ranges
         rays_per_section = len(rays) // self.n_lidar_sections
 
         for i in range(self.n_lidar_sections - 1):
-            self.lidar_sample.append(min(rays[rays_per_section * i:rays_per_section * (i + 1)]))
-        self.lidar_sample.append(min(rays[(self.n_lidar_sections - 1) * rays_per_section:]))
+            min_val = min(rays[rays_per_section * i:rays_per_section * (i + 1)])
+            # Normalize to 0-1 range
+            normalized_val = min(min_val / max_range, 1.0)
+            self.lidar_sample.append(normalized_val)
+        
+        # Last section
+        last_min = min(rays[(self.n_lidar_sections - 1) * rays_per_section:])
+        self.lidar_sample.append(min(last_min / max_range, 1.0))
 
     
     # Handle end beacon LiDAR data
