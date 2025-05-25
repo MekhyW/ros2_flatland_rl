@@ -16,6 +16,9 @@ from stable_baselines3.common.env_checker import check_env
 import numpy as np
 import time
 import threading
+import matplotlib.pyplot as plt
+import json
+from datetime import datetime
 
 class SerpControllerEnv(Node, Env):
     def __init__(self) -> None:
@@ -52,7 +55,7 @@ class SerpControllerEnv(Node, Env):
         self.step_number = 0
 
         # Maximum number of steps before it times out
-        self.max_steps = 200
+        self.max_steps = 500
 
         # Records previous action taken. At the start of an episode, there is no prior action so -1 is assigned
         self.previous_action = -1
@@ -241,7 +244,7 @@ class SerpControllerEnv(Node, Env):
         obs = self.reset()
         done = False
         while not done:
-            action, states = agent.predict(obs)
+            action, states = agent.predict(obs, deterministic=True)
             obs, rewards, done, info = self.step(action)
             com_reward += rewards
         
@@ -249,53 +252,291 @@ class SerpControllerEnv(Node, Env):
 
         return info['end_state'] == 'finished'
 
-    def run_rl_alg(self):
-
-        check_env(self)
-        self.wait_lidar_reading()
-
-        # Create the agent
-        agent = PPO("MlpPolicy", self, verbose=1)
-
-        # Target accuracy
-        min_accuracy = 0.8
-        # Current accuracy
-        accuracy = 0
-        # Number of tested episodes in each iteration
-        n_test_episodes = 20
-
-        training_iterations = 0
-
-        while accuracy < min_accuracy:
-            training_steps= 5000
-            self.get_logger().info('Starting training for ' + str(training_steps) + ' steps')
-
+    def train_single_hyperparameter_set(self, name, hyperparams, episodes_per_eval=50, eval_episodes=10, max_episodes=500):
+        """Train a single hyperparameter set and track results"""
+        
+        self.get_logger().info(f"\n{'='*60}")
+        self.get_logger().info(f"Testing hyperparameter set: {name}")
+        self.get_logger().info(f"{'='*60}")
+        
+        # Set seeds for reproducibility
+        import random
+        import numpy as np
+        seed = 42
+        random.seed(seed)
+        np.random.seed(seed)
+        
+        # Create agent with current hyperparameters
+        agent = PPO(
+            "MlpPolicy", 
+            self, 
+            verbose=1, 
+            seed=seed,
+            **hyperparams
+        )
+        
+        # Track results
+        results = {
+            'name': name,
+            'episodes': [],
+            'accuracies': [],
+            'avg_rewards': [],
+            'training_time': []
+        }
+        
+        episode_count = 0
+        best_accuracy = 0
+        start_time = time.time()
+        
+        while episode_count < max_episodes:
+            # Training phase
+            episodes_to_train = min(episodes_per_eval, max_episodes - episode_count)
+            
+            self.get_logger().info(f'\n[{name}] Training episodes {episode_count} to {episode_count + episodes_to_train}')
+            
             self.training = True
             self.reset_counters()
-
-            # Train the agent
-            agent.learn(total_timesteps=training_steps)
-
-            self.training = False
-
-            successful_episodes = 0
-
-            # Test the agent
-            for i in range(n_test_episodes):
-                self.get_logger().info('Testing episode number ' + str(i + 1) + '.')
-                if self.run_episode(agent): successful_episodes += 1
             
-            # Calculate the accuracy
-            accuracy = successful_episodes/n_test_episodes
+            # Calculate steps needed
+            steps_per_episode = 50
+            training_steps = episodes_to_train * steps_per_episode
+            
+            # Train
+            agent.learn(total_timesteps=training_steps, reset_num_timesteps=False)
+            
+            episode_count += episodes_to_train
+            self.training = False
+            
+            # Evaluation phase
+            self.get_logger().info(f'[{name}] Evaluating after {episode_count} episodes...')
+            successful_episodes = 0
+            total_rewards = 0
+            
+            for i in range(eval_episodes):
+                obs = self.reset()
+                done = False
+                episode_reward = 0
+                
+                while not done:
+                    action, _ = agent.predict(obs, deterministic=True)
+                    obs, reward, done, info = self.step(action)
+                    episode_reward += reward
+                
+                total_rewards += episode_reward
+                if info['end_state'] == 'finished':
+                    successful_episodes += 1
+            
+            accuracy = successful_episodes / eval_episodes
+            avg_reward = total_rewards / eval_episodes
+            current_time = time.time() - start_time
+            
+            # Store results
+            results['episodes'].append(episode_count)
+            results['accuracies'].append(accuracy)
+            results['avg_rewards'].append(avg_reward)
+            results['training_time'].append(current_time)
+            
+            self.get_logger().info(f'[{name}] Episodes: {episode_count}, Accuracy: {accuracy:.2%}, Avg Reward: {avg_reward:.2f}')
+            
+            # Save best model
+            if accuracy > best_accuracy:
+                best_accuracy = accuracy
+                agent.save(f"src/ros2_flatland_rl_tutorial/ppo_best_{name}")
+            
+            # Early stopping if target reached
+            if accuracy >= 0.8:
+                self.get_logger().info(f'[{name}] Target accuracy reached! Training complete.')
+                break
+        
+        # Final save
+        agent.save(f"src/ros2_flatland_rl_tutorial/ppo_final_{name}")
+        results['best_accuracy'] = best_accuracy
+        results['final_time'] = time.time() - start_time
+        
+        return results
 
-            self.get_logger().info('Testing finished. Accuracy: ' + str(accuracy))
+    def plot_comparison(self, all_results):
+        """Create comparison plots for all hyperparameter sets"""
+        
+        # Create figure with subplots
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
+        fig.suptitle('Hyperparameter Comparison', fontsize=16)
+        
+        # Define colors for each set
+        colors = ['blue', 'red', 'green']
+        
+        # Plot 1: Accuracy over episodes
+        ax1.set_title('Accuracy vs Episodes')
+        ax1.set_xlabel('Episodes')
+        ax1.set_ylabel('Accuracy')
+        for i, result in enumerate(all_results):
+            ax1.plot(result['episodes'], result['accuracies'], 
+                    color=colors[i], label=result['name'], linewidth=2)
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        ax1.set_ylim(0, 1.05)
+        
+        # Plot 2: Average reward over episodes
+        ax2.set_title('Average Reward vs Episodes')
+        ax2.set_xlabel('Episodes')
+        ax2.set_ylabel('Average Reward')
+        for i, result in enumerate(all_results):
+            ax2.plot(result['episodes'], result['avg_rewards'], 
+                    color=colors[i], label=result['name'], linewidth=2)
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        # Plot 3: Accuracy over time
+        ax3.set_title('Accuracy vs Training Time')
+        ax3.set_xlabel('Time (seconds)')
+        ax3.set_ylabel('Accuracy')
+        for i, result in enumerate(all_results):
+            ax3.plot(result['training_time'], result['accuracies'], 
+                    color=colors[i], label=result['name'], linewidth=2)
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+        ax3.set_ylim(0, 1.05)
+        
+        # Plot 4: Final comparison bar chart
+        ax4.set_title('Final Performance Comparison')
+        names = [r['name'] for r in all_results]
+        best_accuracies = [r['best_accuracy'] for r in all_results]
+        final_times = [r['final_time'] for r in all_results]
+        
+        x = np.arange(len(names))
+        width = 0.35
+        
+        bars1 = ax4.bar(x - width/2, best_accuracies, width, label='Best Accuracy', color='skyblue')
+        ax4.set_ylabel('Best Accuracy', color='blue')
+        ax4.tick_params(axis='y', labelcolor='blue')
+        ax4.set_ylim(0, 1.1)
+        
+        # Add value labels on bars
+        for bar in bars1:
+            height = bar.get_height()
+            ax4.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                    f'{height:.2%}', ha='center', va='bottom')
+        
+        # Create second y-axis for time
+        ax4_2 = ax4.twinx()
+        bars2 = ax4_2.bar(x + width/2, final_times, width, label='Training Time (s)', color='lightcoral')
+        ax4_2.set_ylabel('Training Time (seconds)', color='red')
+        ax4_2.tick_params(axis='y', labelcolor='red')
+        
+        ax4.set_xlabel('Hyperparameter Set')
+        ax4.set_xticks(x)
+        ax4.set_xticklabels(names)
+        
+        # Add legend
+        lines1, labels1 = ax4.get_legend_handles_labels()
+        lines2, labels2 = ax4_2.get_legend_handles_labels()
+        ax4.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+        
+        plt.tight_layout()
+        
+        # Save the figure
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"hyperparameter_comparison_{timestamp}.png"
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        self.get_logger().info(f"\nComparison plot saved as: {filename}")
+        
+        # Also save results as JSON for future reference
+        json_filename = f"hyperparameter_results_{timestamp}.json"
+        with open(json_filename, 'w') as f:
+            json.dump(all_results, f, indent=2)
+        self.get_logger().info(f"Results data saved as: {json_filename}")
+        
+        plt.show()
 
-            training_iterations += 1
-
-        self.get_logger().info('Training Finished. Training iterations: ' + str(training_iterations) + '  Accuracy: ' + str(accuracy))
-
-
-        agent.save("src/ros2_flatland_rl_tutorial/ppo")
+    def run_rl_alg(self):
+        """Run comparison of different hyperparameter sets"""
+        
+        check_env(self)
+        self.wait_lidar_reading()
+        
+        # Define three hyperparameter sets
+        hyperparameter_sets = {
+            "Original": {
+                "n_steps": 2048,
+                "batch_size": 64,
+                "n_epochs": 10,
+                "learning_rate": 3e-4,
+                "gamma": 0.99,
+                "gae_lambda": 0.95,
+                "clip_range": 0.2,
+                "ent_coef": 0.01,
+            },
+            "Aggressive": {
+                "n_steps": 256,
+                "batch_size": 128,
+                "n_epochs": 20,
+                "learning_rate": 5e-4,
+                "gamma": 0.95,
+                "gae_lambda": 0.90,
+                "clip_range": 0.3,
+                "ent_coef": 0.02,
+                "vf_coef": 0.5,
+                "max_grad_norm": 0.7,
+            },
+            "Conservative": {
+                "n_steps": 4096,
+                "batch_size": 32,
+                "n_epochs": 5,
+                "learning_rate": 1e-4,
+                "gamma": 0.995,
+                "gae_lambda": 0.98,
+                "clip_range": 0.1,
+                "ent_coef": 0.001,
+                "vf_coef": 1.0,
+                "max_grad_norm": 0.3,
+            }
+        }
+        
+        # Print hyperparameter comparison
+        self.get_logger().info("\n" + "="*80)
+        self.get_logger().info("HYPERPARAMETER COMPARISON")
+        self.get_logger().info("="*80)
+        
+        for name, params in hyperparameter_sets.items():
+            self.get_logger().info(f"\n{name}:")
+            for key, value in params.items():
+                self.get_logger().info(f"  {key}: {value}")
+        
+        # Train each hyperparameter set
+        all_results = []
+        
+        for name, hyperparams in hyperparameter_sets.items():
+            # Reset environment between runs
+            self.reset()
+            time.sleep(1)  # Give time for environment to stabilize
+            
+            # Train and collect results
+            results = self.train_single_hyperparameter_set(
+                name=name,
+                hyperparams=hyperparams,
+                episodes_per_eval=50,
+                eval_episodes=10,
+                max_episodes=500
+            )
+            
+            all_results.append(results)
+            
+            # Short break between different hyperparameter sets
+            time.sleep(2)
+        
+        # Create comparison plots
+        self.plot_comparison(all_results)
+        
+        # Print final summary
+        self.get_logger().info("\n" + "="*80)
+        self.get_logger().info("FINAL SUMMARY")
+        self.get_logger().info("="*80)
+        
+        for result in all_results:
+            self.get_logger().info(f"\n{result['name']}:")
+            self.get_logger().info(f"  Best Accuracy: {result['best_accuracy']:.2%}")
+            self.get_logger().info(f"  Training Time: {result['final_time']:.2f} seconds")
+            self.get_logger().info(f"  Episodes to 80% accuracy: {next((e for e, a in zip(result['episodes'], result['accuracies']) if a >= 0.8), 'Not reached')}")
 
 def main(args = None):
     rclpy.init()
