@@ -64,6 +64,9 @@ class SerpControllerEnv(Node, Env):
         self.total_step_cnt = 0
         self.total_episode_cnt = 0
         self.training = False
+        
+        # Initialize state with default values
+        self.state = np.ones(self.n_lidar_sections) * 0.5  # Middle range default
                                     
         # **** Create publishers ****
         self.pub:Publisher = self.create_publisher(Twist, "/cmd_vel", 1)
@@ -81,13 +84,10 @@ class SerpControllerEnv(Node, Env):
 
         # action is an integer between 0 and 2 (total of 3 actions)
         self.action_space = Discrete(len(self.actions))
-        # state is represented by a numpy.Array with size 9 and values between 0 and 2
-        self.observation_space = Box(0, 1, shape=(self.n_lidar_sections,), dtype=np.float64)
+        # state is represented by a numpy.Array with size 9 and values between 0 and 1
+        self.observation_space = Box(0, 1, shape=(self.n_lidar_sections,), dtype=np.float32)
 
         # ****************************************
-
-        # Initial state
-        self.state = np.array(self.lidar_sample)
 
     # Resets the environment to an initial state
     def reset(self):
@@ -107,8 +107,22 @@ class SerpControllerEnv(Node, Env):
 
         # **** Reset necessary values ****
         self.lidar_sample = []
-        self.wait_lidar_reading()
-        self.state = np.array(self.lidar_sample)
+        
+        # Wait for valid lidar reading with timeout
+        start_time = time.time()
+        while len(self.lidar_sample) != self.n_lidar_sections:
+            if time.time() - start_time > 5.0:  # 5 second timeout
+                self.get_logger().warn("Timeout waiting for lidar data in reset. Using default values.")
+                self.lidar_sample = [0.5] * self.n_lidar_sections
+                break
+            time.sleep(0.01)
+        
+        self.state = np.array(self.lidar_sample, dtype=np.float32)
+        
+        # Validate state
+        if np.any(np.isnan(self.state)) or np.any(np.isinf(self.state)):
+            self.get_logger().warn("Invalid state detected in reset. Using default values.")
+            self.state = np.ones(self.n_lidar_sections, dtype=np.float32) * 0.5
 
         # Flatland can sometimes send several collision messages. 
         # This makes sure that no collisions are wrongfully detected at the start of an episode 
@@ -129,12 +143,32 @@ class SerpControllerEnv(Node, Env):
         self.change_robot_speeds(self.pub, self.actions[action][0], self.actions[action][1])
 
         self.lidar_sample = []
-        self.wait_lidar_reading()
+        
+        # Wait for lidar with timeout
+        start_time = time.time()
+        while len(self.lidar_sample) != self.n_lidar_sections:
+            if time.time() - start_time > 2.0:  # 2 second timeout
+                self.get_logger().warn("Timeout waiting for lidar data in step. Using previous state.")
+                self.lidar_sample = self.state.tolist()
+                break
+            time.sleep(0.01)
+            
         self.change_robot_speeds(self.pub, 0.0, 0.0)
         # **************************************************************
 
         # Register current state
-        self.state = np.array(self.lidar_sample)
+        self.state = np.array(self.lidar_sample, dtype=np.float32)
+        
+        # Validate state
+        if np.any(np.isnan(self.state)) or np.any(np.isinf(self.state)):
+            self.get_logger().warn("Invalid state detected in step. Using previous valid state.")
+            # Use previous state or default
+            if hasattr(self, '_last_valid_state'):
+                self.state = self._last_valid_state.copy()
+            else:
+                self.state = np.ones(self.n_lidar_sections, dtype=np.float32) * 0.5
+        else:
+            self._last_valid_state = self.state.copy()
 
         self.step_number += 1
         self.total_step_cnt += 1
@@ -145,7 +179,7 @@ class SerpControllerEnv(Node, Env):
         end_state = ''
 
         if self.collision:
-            end_state = "colision"
+            end_state = "collision"
             reward = -200
             done = True
         elif self.distance_to_end < self.end_range:
@@ -188,7 +222,13 @@ class SerpControllerEnv(Node, Env):
     # Waits for a new LiDAR reading.
     # A new LiDAR reading is also used to signal when an action should finish being performed.
     def wait_lidar_reading(self):
-        while len(self.lidar_sample) != self.n_lidar_sections: pass
+        start_time = time.time()
+        while len(self.lidar_sample) != self.n_lidar_sections:
+            if time.time() - start_time > 5.0:
+                self.get_logger().warn("Timeout in wait_lidar_reading")
+                self.lidar_sample = [0.5] * self.n_lidar_sections
+                break
+            time.sleep(0.01)
 
     # Send a request to move a model
     def move_model(self, model_name, x, y, theta):
@@ -206,29 +246,61 @@ class SerpControllerEnv(Node, Env):
     # Sample LiDAR data
     # Divite into sections and sample the lowest value from each
     def processLiDAR(self, data):
-        self.lidar_sample = []
-        max_range = 10.0  # Maximum LiDAR range
-        
-        rays = data.ranges
-        rays_per_section = len(rays) // self.n_lidar_sections
+        try:
+            self.lidar_sample = []
+            max_range = 10.0  # Maximum LiDAR range
+            
+            rays = data.ranges
+            rays_per_section = len(rays) // self.n_lidar_sections
 
-        for i in range(self.n_lidar_sections - 1):
-            min_val = min(rays[rays_per_section * i:rays_per_section * (i + 1)])
-            # Normalize to 0-1 range
-            normalized_val = min(min_val / max_range, 1.0)
-            self.lidar_sample.append(normalized_val)
-        
-        # Last section
-        last_min = min(rays[(self.n_lidar_sections - 1) * rays_per_section:])
-        self.lidar_sample.append(min(last_min / max_range, 1.0))
+            for i in range(self.n_lidar_sections - 1):
+                section_rays = rays[rays_per_section * i:rays_per_section * (i + 1)]
+                # Filter out nan and inf values
+                valid_rays = [r for r in section_rays if not (np.isnan(r) or np.isinf(r))]
+                
+                if valid_rays:
+                    min_val = min(valid_rays)
+                else:
+                    # If no valid rays, use max range
+                    min_val = max_range
+                
+                # Normalize to 0-1 range
+                normalized_val = min(min_val / max_range, 1.0)
+                self.lidar_sample.append(normalized_val)
+            
+            # Last section
+            last_section = rays[(self.n_lidar_sections - 1) * rays_per_section:]
+            valid_last = [r for r in last_section if not (np.isnan(r) or np.isinf(r))]
+            
+            if valid_last:
+                last_min = min(valid_last)
+            else:
+                last_min = max_range
+                
+            self.lidar_sample.append(min(last_min / max_range, 1.0))
+            
+            # Final validation
+            for i in range(len(self.lidar_sample)):
+                if np.isnan(self.lidar_sample[i]) or np.isinf(self.lidar_sample[i]):
+                    self.lidar_sample[i] = 1.0  # Max normalized range
+                    
+        except Exception as e:
+            self.get_logger().error(f"Error in processLiDAR: {str(e)}")
+            self.lidar_sample = [0.5] * self.n_lidar_sections
 
     
     # Handle end beacon LiDAR data
     # Lowest value is the distance from robot to target
     def processEndLiDAR(self, data):
-        clean_data = [x for x in data.ranges if str(x) != 'nan']
-        if not clean_data: return
-        self.distance_to_end = min(clean_data)
+        try:
+            clean_data = [x for x in data.ranges if not (np.isnan(x) or np.isinf(x)) and x > 0]
+            if clean_data:
+                self.distance_to_end = min(clean_data)
+            else:
+                self.distance_to_end = 10.0  # Default to far distance
+        except Exception as e:
+            self.get_logger().error(f"Error in processEndLiDAR: {str(e)}")
+            self.distance_to_end = 10.0
     
     # Process collisions
     def processCollisions(self, data):
@@ -301,8 +373,16 @@ class SerpControllerEnv(Node, Env):
             steps_per_episode = 50
             training_steps = episodes_to_train * steps_per_episode
             
-            # Train
-            agent.learn(total_timesteps=training_steps, reset_num_timesteps=False)
+            # Train with error handling
+            try:
+                agent.learn(total_timesteps=training_steps, reset_num_timesteps=False)
+            except Exception as e:
+                self.get_logger().error(f"Error during training: {str(e)}")
+                self.get_logger().info("Attempting to recover and continue training...")
+                # Reset to a known good state
+                self.reset()
+                time.sleep(1)
+                continue
             
             episode_count += episodes_to_train
             self.training = False
@@ -341,7 +421,7 @@ class SerpControllerEnv(Node, Env):
             # Save best model
             if accuracy > best_accuracy:
                 best_accuracy = accuracy
-                agent.save(f"src/ros2_flatland_rl_tutorial/ppo_best_{name}")
+                agent.save(f"ppo_best_{name}")
             
             # Early stopping if target reached
             if accuracy >= 0.8:
@@ -349,7 +429,7 @@ class SerpControllerEnv(Node, Env):
                 break
         
         # Final save
-        agent.save(f"src/ros2_flatland_rl_tutorial/ppo_final_{name}")
+        agent.save(f"ppo_final_{name}")
         results['best_accuracy'] = best_accuracy
         results['final_time'] = time.time() - start_time
         
@@ -452,9 +532,12 @@ class SerpControllerEnv(Node, Env):
         """Run comparison of different hyperparameter sets"""
         
         check_env(self)
+        
+        # Give the environment time to initialize
+        time.sleep(2)
         self.wait_lidar_reading()
         
-        # Define three hyperparameter sets
+        # Define three hyperparameter sets with more conservative values
         hyperparameter_sets = {
             "Original": {
                 "n_steps": 2048,
@@ -465,6 +548,8 @@ class SerpControllerEnv(Node, Env):
                 "gae_lambda": 0.95,
                 "clip_range": 0.2,
                 "ent_coef": 0.01,
+                "normalize_advantage": True,
+                "target_kl": 0.01,
             },
             "Aggressive": {
                 "n_steps": 256,
@@ -477,6 +562,8 @@ class SerpControllerEnv(Node, Env):
                 "ent_coef": 0.02,
                 "vf_coef": 0.5,
                 "max_grad_norm": 0.7,
+                "normalize_advantage": True,
+                "target_kl": 0.02,
             },
             "Conservative": {
                 "n_steps": 4096,
@@ -489,6 +576,8 @@ class SerpControllerEnv(Node, Env):
                 "ent_coef": 0.001,
                 "vf_coef": 1.0,
                 "max_grad_norm": 0.3,
+                "normalize_advantage": True,
+                "target_kl": 0.005,
             }
         }
         
@@ -516,7 +605,7 @@ class SerpControllerEnv(Node, Env):
                 hyperparams=hyperparams,
                 episodes_per_eval=50,
                 eval_episodes=10,
-                max_episodes=500
+                max_episodes=200
             )
             
             all_results.append(results)
