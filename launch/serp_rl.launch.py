@@ -4,6 +4,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Find
 import launch.conditions as conditions
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
+from launch.actions import SetEnvironmentVariable
 
 
 def generate_launch_description():
@@ -33,13 +34,23 @@ def generate_launch_description():
 
             SetEnvironmentVariable(name="ROSCONSOLE_FORMAT", value="[${severity} ${time} ${logger}]: ${message}"),
 
+
+            # Add this to your LaunchDescription
+            SetEnvironmentVariable(
+                'RCUTILS_CONSOLE_OUTPUT_FORMAT',
+                '[{severity}] {message}'
+            ),
+            SetEnvironmentVariable(
+                'RCUTILS_LOGGING_BUFFERED_STREAM', '0'
+            ),
             # **** Nodes launched by this file ****
             # launch flatland server
             Node(
                 name="flatland_server",
                 package="flatland_server",
                 executable="flatland_server",
-                output="screen",
+                output="log",
+                arguments=['--ros-args', '--log-level', 'WARN'],
                 parameters=[
                     # use the arguments passed into the launchfile for this node
                     {"world_path": world_path},
