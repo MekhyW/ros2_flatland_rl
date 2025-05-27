@@ -31,7 +31,12 @@ Build the project and install dependencies:
 cd ..
 rosdep install -i --from-path src --rosdistro humble -y
 colcon build
+```
+
+Source the installation:
+```
 source install/setup.bash
+source /opt/ros/humble/setup.bash
 ```
 
 Run the launch file:
@@ -204,7 +209,9 @@ Resembles a multi-room layout separated by thin walls with openings. Designed to
 7) `turn_map`:
 Features large black blocks forming an L-shaped passage, forcing the agent to make sharp turns. Ideal for training maneuverability and behavior at intersections or sharp corners.
 
-All maps have a smaller counterpart, designed so that training and evaluation can be performed much faster (that is, convergence is expected in a smaller order of magnitude of steps)
+All maps have a smaller counterpart, designed so that training and evaluation can be performed much faster (that is, convergence is expected in a smaller order of magnitude of steps).
+
+To changed the map, edit the `world/world.yaml` file with the yaml file name of the map you want to apply. Then run `sudo colcon build` on the workspace root to make sure everything built correctly.
 
 ### Map Creator
 
