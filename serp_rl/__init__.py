@@ -34,7 +34,7 @@ class SerpControllerEnv(Node, Env):
                         (0.0, -angular_speed)] # rotate right
 
         # How close the robot needs to be to the target to finish the task
-        self.end_range = 0.2
+        self.end_range = 0.3  # Increased from 0.2 for easier goal detection
 
         # Number of divisions of the LiDAR
         self.n_lidar_sections = 9
@@ -47,15 +47,20 @@ class SerpControllerEnv(Node, Env):
         self.collision = False
 
         # Possible starting positions
-        # Updated positions for room_map (multi-room environment)
-        self.start_positions = [(-8.0, -4.0, 0.0), (8.0, 4.0, 3.14159265359)]
+        # For room_map: positions that work with the room layout
+        self.start_positions = [(-2.0, -3.5, 0.0), (0.0, 0.0, 3.14159265359)]
+        
+        # Print map info for debugging
+        self.get_logger().info("Using room_map with starting positions:")
+        self.get_logger().info(f"  Position 0: {self.start_positions[0]}")
+        self.get_logger().info(f"  Position 1: {self.start_positions[1]}")
         # Current position
         self.position = 0
 
         self.step_number = 0
 
         # Maximum number of steps before it times out
-        self.max_steps = 500
+        self.max_steps = 800
 
         # Records previous action taken. At the start of an episode, there is no prior action so -1 is assigned
         self.previous_action = -1
@@ -188,10 +193,16 @@ class SerpControllerEnv(Node, Env):
             done = True
         elif self.step_number >= self.max_steps:
             end_state = "timeout"
-            reward = -300 
+            reward = -500 
             done = True
         elif action == 0:
+            # Reward for moving forward
             reward = 2
+            # Additional reward for getting closer to goal
+            if hasattr(self, '_prev_distance_to_end'):
+                if self.distance_to_end < self._prev_distance_to_end:
+                    reward += 5  # Bonus for getting closer
+            self._prev_distance_to_end = self.distance_to_end
         else:
             reward = 0
         # **************************************************************************
@@ -370,7 +381,7 @@ class SerpControllerEnv(Node, Env):
             self.reset_counters()
             
             # Calculate steps needed
-            steps_per_episode = 50
+            steps_per_episode = 100  # Increased from 50 for better exploration
             training_steps = episodes_to_train * steps_per_episode
             
             # Train with error handling
@@ -391,6 +402,7 @@ class SerpControllerEnv(Node, Env):
             self.get_logger().info(f'[{name}] Evaluating after {episode_count} episodes...')
             successful_episodes = 0
             total_rewards = 0
+            end_states_count = {'finished': 0, 'collision': 0, 'timeout': 0}
             
             for i in range(eval_episodes):
                 obs = self.reset()
@@ -403,6 +415,7 @@ class SerpControllerEnv(Node, Env):
                     episode_reward += reward
                 
                 total_rewards += episode_reward
+                end_states_count[info['end_state']] += 1
                 if info['end_state'] == 'finished':
                     successful_episodes += 1
             
@@ -417,6 +430,7 @@ class SerpControllerEnv(Node, Env):
             results['training_time'].append(current_time)
             
             self.get_logger().info(f'[{name}] Episodes: {episode_count}, Accuracy: {accuracy:.2%}, Avg Reward: {avg_reward:.2f}')
+            self.get_logger().info(f'[{name}] End states: Finished: {end_states_count["finished"]}, Collisions: {end_states_count["collision"]}, Timeouts: {end_states_count["timeout"]}')
             
             # Save best model
             if accuracy > best_accuracy:
@@ -437,6 +451,11 @@ class SerpControllerEnv(Node, Env):
 
     def plot_comparison(self, all_results):
         """Create comparison plots for all hyperparameter sets"""
+        
+        # Use non-interactive backend to avoid threading issues
+        import matplotlib
+        matplotlib.use('Agg')  # Use non-interactive backend
+        import matplotlib.pyplot as plt
         
         # Create figure with subplots
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
@@ -526,7 +545,8 @@ class SerpControllerEnv(Node, Env):
             json.dump(all_results, f, indent=2)
         self.get_logger().info(f"Results data saved as: {json_filename}")
         
-        plt.show()
+        # Close the figure to free memory
+        plt.close(fig)
 
     def run_rl_alg(self):
         """Run comparison of different hyperparameter sets"""
@@ -603,9 +623,9 @@ class SerpControllerEnv(Node, Env):
             results = self.train_single_hyperparameter_set(
                 name=name,
                 hyperparams=hyperparams,
-                episodes_per_eval=50,
+                episodes_per_eval=100,
                 eval_episodes=10,
-                max_episodes=200
+                max_episodes=500
             )
             
             all_results.append(results)

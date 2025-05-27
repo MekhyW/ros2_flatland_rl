@@ -1,7 +1,7 @@
 properties: {}
 layers:
   - name: ["collisions_layer", "serp_laser_layer"]
-    map: "room_map.yaml"  # Changed from "turn.yaml"
+    map: "circular_map_small.yaml"  # Using the smaller room map
     color: [1.0, 1.0, 1.0, 1]
   - name: ["end_laser_layer", "end_beacon_layer"]
     map: "empty.yaml"
@@ -9,7 +9,7 @@ layers:
 models:
   - name: serp
     model: "serp.model.yaml"
-    pose: [-10.0, -6.0, 0.0]  # Starting position
+    pose: [-2.0, -3.5, 0.0]  # Adjusted for smaller map
   - name: end_beacon
     model: "end_beacon.model.yaml"
-    pose: [10.0, -1.0, 0.0]  # Target position 
+    pose: [0.0, 0.0, 0.0]  # Adjusted for smaller map
