@@ -14,12 +14,10 @@ Below is an example of the ROS2-based agent running inside the Flatland simulato
 
 ### VM
 
-Using a Virtual Machine engine such as VirtualBox or VMware, you can use the provided [VM provided](https://drive.google.com/file/d/1Wte7yGi9puJU5gR8mpzAtvtKOPtoYKEJ/view?usp=sharing). This VM has all the necessary packages already installed and configured, including a fresh install of ROS 2 Humble on Ubuntu, and the Stable-Baselines3 Python package.
+Using a Virtual Machine engine such as VirtualBox or VMware, you can use the provided [VM provided](https://drive.google.com/file/d/1Wte7yGi9puJU5gR8mpzAtvtKOPtoYKEJ/view?usp=sharing). This VM has all the necessary packages already installed and configured, including a fresh install of ROS 2 Humble on Ubuntu, and a workspace for flatland.
 We recommend allocating as much resource as possible to this virtual machine, as the agent training process takes a large amount of steps and can become resource hungry in sandboxed environment.
 
 Obs: the VM password is `ros2`
-
-### Running the code
 
 Clone this repository to the `~/ros2_ws/src` folder:
 ```
@@ -31,7 +29,11 @@ Build the project and install dependencies:
 cd ..
 rosdep install -i --from-path src --rosdistro humble -y
 colcon build
+pip install gym
+pip install stable_baselines3
 ```
+
+### Running the code
 
 Source the installation:
 ```
