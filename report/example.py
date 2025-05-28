@@ -1,0 +1,43 @@
+
+hyperparameter_sets = {
+            "Original": {
+                "n_steps": 2048,
+                "batch_size": 64,
+                "n_epochs": 10,
+                "learning_rate": 3e-4,
+                "gamma": 0.99,
+                "gae_lambda": 0.95,
+                "clip_range": 0.2,
+                "ent_coef": 0.01,
+                "normalize_advantage": True,
+                "target_kl": 0.01,
+            },
+            "Aggressive": {
+                "n_steps": 256,
+                "batch_size": 128,
+                "n_epochs": 20,
+                "learning_rate": 5e-4,
+                "gamma": 0.95,
+                "gae_lambda": 0.90,
+                "clip_range": 0.3,
+                "ent_coef": 0.02,
+                "vf_coef": 0.5,
+                "max_grad_norm": 0.7,
+                "normalize_advantage": True,
+                "target_kl": 0.02,
+            },
+            "Conservative": {
+                "n_steps": 4096,
+                "batch_size": 32,
+                "n_epochs": 5,
+                "learning_rate": 1e-4,
+                "gamma": 0.995,
+                "gae_lambda": 0.98,
+                "clip_range": 0.1,
+                "ent_coef": 0.001,
+                "vf_coef": 1.0,
+                "max_grad_norm": 0.3,
+                "normalize_advantage": True,
+                "target_kl": 0.005,
+            }
+        }

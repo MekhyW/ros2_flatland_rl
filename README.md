@@ -2,7 +2,7 @@
 
 ## Project Report
 
-[Project Report](Report-Flatland-Project.pdf)
+[Project Report](report/Report-Flatland-Project.pdf)
 
 ## Description
 
