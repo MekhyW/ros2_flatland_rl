@@ -1,28 +1,68 @@
 # Flatland Reinforcement Learning in ROS 2
 
-## First Run
+## Description
+
+This project aims to train a 2-dimensional robotic agent using ROS2 to perform a navigation task, in maze-like environments. The agent is based on the SERP robot platform and equipped with a simulated LiDAR sensor. For simulation purposes, we will use the Flatland 2D simulator, which offers lightweight and fast performance suitable for reinforcement learning experiments.
+
+The integration between ROS2, Flatland, and the training environment is achieved by adapting the reinforcement learning pipeline developed by the project "ros2_flatland_rl_tutorial", from the user FilipeAlmeidaFEUP. This pipeline provides a solid foundation for combining ROS2 and Flatland with the Gym interface and Stable Baselines for training RL models.
+
+In this project, the original implementation is expanded to include **comprehensive hyperparameter optimization**, **automated training analysis**, and **robust performance comparison** across different PPO configurations to better understand how well the training pipeline can generalize to a multitude of map configurations.
+
+## New Features
+
+### Hyperparameter Optimization
+The system now includes three pre-configured hyperparameter sets optimized for different training scenarios:
+
+- **Original**: Balanced parameters for general performance
+- **Aggressive**: Fast learning with higher exploration
+- **Conservative**: Stable, slow learning with high precision
+
+### Automated Performance Analysis
+- **Real-time training monitoring** with accuracy and reward tracking
+- **Comparative visualization** of different hyperparameter sets
+- **Automated model saving** for best-performing configurations
+- **Early stopping** when target accuracy (80%) is reached
+
+### Robust Training Pipeline
+- **Error handling and recovery** during training
+- **Deterministic evaluation** for consistent results
+- **Comprehensive logging** of training progress
+- **JSON export** of training results for further analysis
+
+## Getting Started
 
 ### VM
 
-Using a Virtual Machine engine such as VirtualBox or VMware, you can use the provided [VM provided](https://drive.google.com/file/d/1Wte7yGi9puJU5gR8mpzAtvtKOPtoYKEJ/view?usp=sharing). This VM has all the necessary packages already installed and configured, including a fresh install of ROS 2 Humble on Ubuntu, and the Stable-Baselines3 Python package.
+Using a Virtual Machine engine such as VirtualBox or VMware, you can use the provided [VM provided](https://drive.google.com/file/d/1Wte7yGi9puJU5gR8mpzAtvtKOPtoYKEJ/view?usp=sharing). This VM has all the necessary packages already installed and configured, including a fresh install of ROS 2 Humble on Ubuntu, and a workspace for flatland.
+We recommend allocating as much resource as possible to this virtual machine, as the agent training process takes a large amount of steps and can become resource hungry in sandboxed environment.
 
-### Running the code
+Obs: the VM password is `ros2`
 
 Clone this repository to the `~/ros2_ws/src` folder:
-```
+```bash
 git clone https://github.com/MekhyW/ros2_flatland_rl.git
 ```
 
 Build the project and install dependencies:
-```
+```bash
 cd ..
 rosdep install -i --from-path src --rosdistro humble -y
 colcon build
+pip install gym
+pip install stable_baselines3
+pip install matplotlib  # Required for training visualizations
+```
+
+### Running the code
+
+Source the installation:
+```bash
 source install/setup.bash
+source /opt/ros/humble/setup.bash
 ```
 
 Run the launch file:
-```
+```bash
 ros2 launch serp_rl serp_rl.launch.py
 ```
 
@@ -188,3 +228,168 @@ The goal is to make sure you end up with an agent capable of completing the task
 1. Train for a given number of steps.
 2. Test the agent for a set number of episodes and determine the accuracy (number of successful episodes divided by the total number of episodes)
 3. If the accuracy is above a given threshold finish training, otherwise go back to step 1. 
+
+
+## Training System
+
+### Hyperparameter Sets
+
+The system automatically tests three different hyperparameter configurations:
+
+#### Original Configuration
+- **Learning Rate**: 3e-4
+- **Batch Size**: 64
+- **N Steps**: 2048
+- **Clip Range**: 0.2
+- **Best for**: Balanced performance across different environments
+
+#### Aggressive Configuration  
+- **Learning Rate**: 5e-4 (higher)
+- **Batch Size**: 128 (larger)
+- **N Epochs**: 20 (more updates)
+- **Clip Range**: 0.3 (more aggressive updates)
+- **Best for**: Fast convergence in simple environments
+
+#### Conservative Configuration
+- **Learning Rate**: 1e-4 (lower)
+- **Batch Size**: 32 (smaller)
+- **N Steps**: 4096 (more experience)
+- **Clip Range**: 0.1 (more stable updates)
+- **Best for**: Complex environments requiring stable learning
+
+
+### Training Results
+
+Based on our experiments with the circular obstacle map, here are the comparative results:
+
+| Configuration | Best Accuracy | Training Time | Episodes to 80% |
+|---------------|---------------|---------------|-----------------|
+| Original      | [0.4%]        | [861.4262011051178 sec]   | [500 episodes]  |
+| Aggressive    | [0.2%]        | [1174.0944955348969 sec]   | [500 episodes]  |
+| Conservative  | [0.6%]        | [1349.6461951732635 sec]   | [500 episodes]  |
+
+
+The system automatically generates comparison plots showing:
+- **Accuracy vs Episodes**: Learning curve progression
+- **Average Reward vs Episodes**: Reward optimization over time  
+- **Accuracy vs Training Time**: Efficiency comparison
+- **Final Performance Comparison**: Bar chart summary
+
+![Training Results](models/best/hyperparameter_comparison_20250527_170530.png)
+
+## Performance Monitoring
+
+The training system provides comprehensive monitoring:
+
+### Real-time Logging
+```
+[Original] Episodes: XXX, Accuracy: XX.X%, Avg Reward: XXX.X
+[Original] End states: Finished: X, Collisions: X, Timeouts: X
+```
+
+
+## Setup the Environment
+
+### Environment Configuration
+
+The environment uses a **9-dimensional observation space** derived from LiDAR readings, divided into equal angular sections for computational efficiency. The **3-action discrete space** includes:
+
+1. **Move Forward** - Linear velocity with no rotation
+2. **Rotate Left** - Pure rotation (counter-clockwise)
+3. **Rotate Right** - Pure rotation (clockwise)
+
+### Reward System
+
+The reward system has been optimized for faster convergence:
+
+- **Goal Achievement**: +400 base reward + time bonus (up to +200)
+- **Collision**: -200 penalty
+- **Timeout**: -500 penalty  
+- **Forward Movement**: +2 reward for exploration
+- **Progress Bonus**: +5 additional reward for getting closer to goal
+
+### State Representation
+
+The state consists of normalized LiDAR readings (0-1 range) with robust error handling:
+- **NaN/Inf filtering** for sensor noise
+- **Timeout protection** for sensor failures
+- **Validation checks** to ensure state consistency
+
+## Available Maps
+
+The system includes both full-size and optimized small maps for faster training:
+
+### Full-Size Maps
+1. **circular_map**: Scattered circular obstacles for general navigation
+2. **corridor_map**: Narrow hallway navigation
+3. **maze_map**: Complex pathfinding challenges
+4. **room_map**: Multi-room traversal
+5. **turn_map**: L-shaped navigation requiring sharp turns
+
+### Small Maps (Optimized for Training)
+- **circular_map_small**: 250x250px with 5 circular obstacles
+- **corridor_map_small**: 300x150px linear corridor
+- **maze_map_small**: 250x250px compact maze
+- **room_map_small**: 300x200px two-room layout
+- **turn_map_small**: 200x200px L-shaped corridor
+
+All small maps use 0.04m resolution and are designed for training convergence within 500 episodes.
+
+### Map Creator Tools
+
+Two Python utilities are provided for custom map generation:
+
+- **`maps_creator.py`**: Generates full-size maps
+- **`small_maps_creator.py`**: Creates training-optimized smaller maps
+
+Both tools automatically generate the required PNG and YAML file pairs.
+
+## Configuration
+
+### Switching Maps
+Edit `world/world.yaml` to change the active map:
+```yaml
+layers:
+  - name: ["collisions_layer", "serp_laser_layer"]
+    map: "circular_map_small.yaml"  # Change this line
+```
+
+### Adjusting Training Parameters
+Modify the hyperparameter sets in `serp_rl/__init__.py`:
+```python
+hyperparameter_sets = {
+    "Custom": {
+        "learning_rate": 2e-4,
+        "batch_size": 64,
+        "n_steps": 1024,
+        # ... other parameters
+    }
+}
+```
+
+### Training Duration
+Control training length by adjusting:
+- `max_episodes`: Maximum episodes per hyperparameter set
+- `episodes_per_eval`: Episodes between evaluation runs
+- `eval_episodes`: Number of episodes for accuracy 
+
+
+## Results Analysis
+
+### Automated Outputs
+After training completion, the system generates:
+
+1. **`hyperparameter_comparison_YYYYMMDD_HHMMSS.png`**: Visualization plots
+2. **`hyperparameter_results_YYYYMMDD_HHMMSS.json`**: Raw data for analysis
+3. **`ppo_best_[Configuration].zip`**: Best-performing model files
+4. **`ppo_final_[Configuration].zip`**: Final model states
+
+### Custom Analysis
+The JSON output enables custom analysis:
+```python
+import json
+with open('hyperparameter_results_YYYYMMDD_HHMMSS.json', 'r') as f:
+    results = json.load(f)
+    
+# Analyze convergence rates, final performance, etc.
+```
