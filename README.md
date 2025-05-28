@@ -2,7 +2,6 @@
 
 ## Description
 
-=======
 This project aims to train a 2-dimensional robotic agent using ROS2 to perform a navigation task, in maze-like environments. The agent is based on the SERP robot platform and equipped with a simulated LiDAR sensor. For simulation purposes, we will use the Flatland 2D simulator, which offers lightweight and fast performance suitable for reinforcement learning experiments.
 
 The integration between ROS2, Flatland, and the training environment is achieved by adapting the reinforcement learning pipeline developed by the project "ros2_flatland_rl_tutorial", from the user FilipeAlmeidaFEUP. This pipeline provides a solid foundation for combining ROS2 and Flatland with the Gym interface and Stable Baselines for training RL models.
@@ -29,7 +28,7 @@ The system now includes three pre-configured hyperparameter sets optimized for d
 - **Deterministic evaluation** for consistent results
 - **Comprehensive logging** of training progress
 - **JSON export** of training results for further analysis
-=======
+
 In this project, the original implementation is expanded in order to better understand how well the training pipeline can generalize to a multitude of map configurations.
 
 Below is an example of the ROS2-based agent running inside the Flatland simulator:
@@ -376,7 +375,6 @@ with open('hyperparameter_results_YYYYMMDD_HHMMSS.json', 'r') as f:
     
 # Analyze convergence rates, final performance, etc.
 ```
-=======
 ## Available Maps
 
 The following custom map configurations were created for testing:
