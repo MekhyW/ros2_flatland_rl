@@ -2,6 +2,7 @@
 
 ## Description
 
+=======
 This project aims to train a 2-dimensional robotic agent using ROS2 to perform a navigation task, in maze-like environments. The agent is based on the SERP robot platform and equipped with a simulated LiDAR sensor. For simulation purposes, we will use the Flatland 2D simulator, which offers lightweight and fast performance suitable for reinforcement learning experiments.
 
 The integration between ROS2, Flatland, and the training environment is achieved by adapting the reinforcement learning pipeline developed by the project "ros2_flatland_rl_tutorial", from the user FilipeAlmeidaFEUP. This pipeline provides a solid foundation for combining ROS2 and Flatland with the Gym interface and Stable Baselines for training RL models.
@@ -28,6 +29,12 @@ The system now includes three pre-configured hyperparameter sets optimized for d
 - **Deterministic evaluation** for consistent results
 - **Comprehensive logging** of training progress
 - **JSON export** of training results for further analysis
+=======
+In this project, the original implementation is expanded in order to better understand how well the training pipeline can generalize to a multitude of map configurations.
+
+Below is an example of the ROS2-based agent running inside the Flatland simulator:
+
+![Maze example](images/flatland_window.gif)
 
 ## Getting Started
 
@@ -76,38 +83,15 @@ The robot is currently using the Proximal Policy Optimization (PPO) algorithm to
 
 The target area is represented by the green circle and, every time the task is restarted, the initial and final positions swap so the robot learns how to turn to both the left and the right. The task is restarted if it fails if there are any collisions, if it takes too much time or if it succeeds (reaches the end).
 
-These are all the components in the world and how they changed from the previous tutorial:
-- Map: now is a simpler layout, representing a hallway with a 90º turn. Same configuration with a different [image](world/turn.png).
-- SERP robot model with LiDAR: this model is exactly the same as before.
-- End Beacon: new model added to detect if the SERP robot reached the end. It's represented by a green circle and its body has no collision with any other component. 
-- End Beacon LiDAR: laser plugin inside the end beacon model that ignores walls and only detects the SERP robot. The smallest value read is the distance from the robot to the end and, if below a threshold, the target area was reached.
-
 NOTE: The layers were set up in order to accommodate the necessary collisions and lasers. If you're having trouble understanding the logic, revisit this [Google Slides presentation on how to manage layers](https://docs.google.com/presentation/d/1KqJDQR_PBaGtS-kA5KgsTbaRThu_uP2U8NJeoSP0GDE/edit?usp=sharing). The last slide shows the layer graph for this world.
 
-As using RL can be very time-consuming, this simulation was sped up. This can be done by modifying the `update_rate` in Flatland, as mentioned in the [previous tutorial](https://github.com/FilipeAlmeidaFEUP/ros2_teleopkeys_tutorial#launch-file).
+As using RL can be very time-consuming, this simulation was sped up. This can be done by modifying the `update_rate` in Flatland.
 
 NOTE: If you are using the VM and are running into performance issues, it might be a good idea to lower the `update_rate`.
 
 The next sections will explain how the code from the controller needs to be organized to use any RL algorithm provided by Stable-Baselines3.
 
 ## Setup the Environment
-
-Important definitions before you start:
-- RL Agent: component that decides what action to take based on the state of its environment.
-- RL Environment: component that contains information about all possible actions for every state and the respective reward (how good the action is for any given state).
-
-
-Every RL algorithm has the same goal: find the best action for the agent to take to every possible state of the environment. The first step to using RL in robotics (also known as Robot Learning) is to turn the robot (and its sensors) and the map into the environment for the agent to use. 
-
-This is exactly what the OpenAI's Gym package allows us to do with an `Env` class that can be inherited. In this package, we can reuse the node class:
-```
-from gym import Env
-
-class SerpControllerEnv(Node, Env):
-  [...]
-```
-
-This will then allow us to use variables and override functions that define the environment. The next sections will explain how to configure this environment but you can also check the documentation on [how to make your own custom environment](https://www.gymlibrary.dev/content/environment_creation/).
 
 ### \_\_init\_\_ fuction
 
@@ -228,7 +212,6 @@ The goal is to make sure you end up with an agent capable of completing the task
 1. Train for a given number of steps.
 2. Test the agent for a set number of episodes and determine the accuracy (number of successful episodes divided by the total number of episodes)
 3. If the accuracy is above a given threshold finish training, otherwise go back to step 1. 
-
 
 ## Training System
 
@@ -393,3 +376,65 @@ with open('hyperparameter_results_YYYYMMDD_HHMMSS.json', 'r') as f:
     
 # Analyze convergence rates, final performance, etc.
 ```
+=======
+## Available Maps
+
+The following custom map configurations were created for testing:
+
+1) `circular_map`:
+A map with several circular obstacles of varying sizes scattered across the space. Useful for training agents on general navigation and avoidance in open but cluttered environments.
+
+2) `corridor_map`:
+A narrow horizontal corridor with free space bordered by solid walls on top and bottom. This design is ideal for training agents in constrained linear navigation or movement in tight hallways.
+
+3) `empty`:
+A fully open space with no obstacles. Best used as a control or baseline scenario to test agent mobility without obstruction.
+
+4) `maze_map`:
+A map with a grid-like pattern of intersecting vertical and horizontal bars forming a simple maze. Trains the agent in decision-making and route planning within complex environments.
+
+5) `obstacles_map`:
+A few scattered rectangular obstacles in an otherwise open area. Good for basic avoidance tasks and testing spatial awareness.
+
+6) `room_map`:
+Resembles a multi-room layout separated by thin walls with openings. Designed to train the agent in room-to-room traversal and strategic pathfinding.
+
+7) `turn_map`:
+Features large black blocks forming an L-shaped passage, forcing the agent to make sharp turns. Ideal for training maneuverability and behavior at intersections or sharp corners.
+
+All maps have a smaller counterpart, designed so that training and evaluation can be performed much faster (that is, convergence is expected in a smaller order of magnitude of steps).
+
+To changed the map, edit the `world/world.yaml` file with the yaml file name of the map you want to apply. Then run `sudo colcon build` on the workspace root to make sure everything built correctly.
+
+### Map Creator
+
+In order to facilitate the process of customizing maps for experimenting, which can be quite tedious to do manually, the generator script located at `world/maps_creator.py` was made.
+
+How it works:
+
+Each map is created as a 2D numpy array where:
+
+- White pixels (value 255) represent free space where robots can move
+- Black pixels (value 0) represent obstacles or walls that block movement
+- The maps use grayscale values to indicate occupancy probability
+
+Output files:
+
+For each map, the script generates two files:
+
+- PNG file - The visual map image
+- YAML file - Configuration file containing metadata like resolution (0.04 meters per pixel), origin coordinates, and occupancy thresholds
+
+How to use it:
+
+1) Run the script to generate all four map types automatically
+
+2) Copy the generated files (.png and .yaml pairs) to your robotics project's world directory
+
+3) Update your world configuration to reference the new maps
+
+4) Adjust starting positions in your robot navigation code to match the map layout
+
+## Next Steps
+
+It would be very interesting if, with due collaboration with the ROS community, a custom Nav2 controller plugin was developed for the agent. This would allow the robot to leverage its learned policy in navigation tasks.
