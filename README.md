@@ -1,5 +1,9 @@
 # Flatland Reinforcement Learning in ROS 2
 
+## Project Report
+
+[Project Report](Report-Flatland-Project.pdf)
+
 ## Description
 
 This project aims to train a 2-dimensional robotic agent using ROS2 to perform a navigation task, in maze-like environments. The agent is based on the SERP robot platform and equipped with a simulated LiDAR sensor. For simulation purposes, we will use the Flatland 2D simulator, which offers lightweight and fast performance suitable for reinforcement learning experiments.
