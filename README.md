@@ -1,8 +1,10 @@
 # Flatland Reinforcement Learning in ROS 2
 
-## Project Report
+## Project Report (Portuguese)
 
-[Project Report](report/Report-Flatland-Project.pdf)
+[PDF](report/Report-Flatland-Project.pdf)
+
+[Video](https://youtu.be/ed0pmwgJlKs)
 
 ## Description
 
