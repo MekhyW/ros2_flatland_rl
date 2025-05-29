@@ -276,7 +276,7 @@ The training system provides comprehensive monitoring:
 ```
 
 
-## Setup the Environment
+## Setup for Training
 
 ### Environment Configuration
 
